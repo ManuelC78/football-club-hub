@@ -1,40 +1,48 @@
-const { v4: uuidv4 } = require('uuid');
+const FixtureModel = require('../models/fixture.model');
 
-const fixtures = [];
+exports.list = async (req, res, next) => {
+  try {
+    const { clubId, from, to } = req.query;
+    if (!clubId) return res.status(400).json({ error: 'clubId query param required' });
+    const fixtures = await FixtureModel.findByClub(clubId, { from, to });
+    res.json({ fixtures });
+  } catch (err) { next(err); }
+};
 
-exports.list   = (req, res) => {
-  const { clubId, from, to } = req.query;
-  let result = clubId ? fixtures.filter(f => f.homeClubId === clubId || f.awayClubId === clubId) : fixtures;
-  if (from) result = result.filter(f => new Date(f.date) >= new Date(from));
-  if (to)   result = result.filter(f => new Date(f.date) <= new Date(to));
-  res.json({ fixtures: result });
+exports.get = async (req, res, next) => {
+  try {
+    const fixture = await FixtureModel.findById(req.params.id);
+    if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
+    res.json({ fixture });
+  } catch (err) { next(err); }
 };
-exports.get    = (req, res) => {
-  const fixture = fixtures.find(f => f.id === req.params.id);
-  if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
-  res.json({ fixture });
+
+exports.create = async (req, res, next) => {
+  try {
+    const fixture = await FixtureModel.create(req.body);
+    res.status(201).json({ fixture });
+  } catch (err) { next(err); }
 };
-exports.create = (req, res) => {
-  const fixture = { id: uuidv4(), ...req.body, result: null, createdAt: new Date() };
-  fixtures.push(fixture);
-  res.status(201).json({ fixture });
+
+exports.update = async (req, res, next) => {
+  try {
+    const fixture = await FixtureModel.update(req.params.id, req.body);
+    if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
+    res.json({ fixture });
+  } catch (err) { next(err); }
 };
-exports.update = (req, res) => {
-  const idx = fixtures.findIndex(f => f.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Fixture not found' });
-  fixtures[idx] = { ...fixtures[idx], ...req.body, updatedAt: new Date() };
-  res.json({ fixture: fixtures[idx] });
+
+exports.remove = async (req, res, next) => {
+  try {
+    await FixtureModel.delete(req.params.id);
+    res.json({ message: 'Fixture deleted' });
+  } catch (err) { next(err); }
 };
-exports.remove = (req, res) => {
-  const idx = fixtures.findIndex(f => f.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Fixture not found' });
-  fixtures.splice(idx, 1);
-  res.json({ message: 'Fixture deleted' });
-};
-exports.recordResult = (req, res) => {
-  const fixture = fixtures.find(f => f.id === req.params.id);
-  if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
-  fixture.result = req.body; // { homeScore, awayScore, notes }
-  fixture.updatedAt = new Date();
-  res.json({ fixture });
+
+exports.recordResult = async (req, res, next) => {
+  try {
+    const fixture = await FixtureModel.recordResult(req.params.id, req.body);
+    if (!fixture) return res.status(404).json({ error: 'Fixture not found' });
+    res.json({ fixture });
+  } catch (err) { next(err); }
 };

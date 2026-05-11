@@ -1,28 +1,40 @@
-const { v4: uuidv4 } = require('uuid');
+const ClubModel = require('../models/club.model');
 
-// Stubbed in-memory store — replace with DB queries
-const clubs = [];
+exports.list = async (req, res, next) => {
+  try {
+    const clubs = req.user.role === 'admin'
+      ? await ClubModel.findAll()
+      : await ClubModel.findByOwner(req.user.id);
+    res.json({ clubs });
+  } catch (err) { next(err); }
+};
 
-exports.list   = (req, res) => res.json({ clubs });
-exports.get    = (req, res) => {
-  const club = clubs.find(c => c.id === req.params.id);
-  if (!club) return res.status(404).json({ error: 'Club not found' });
-  res.json({ club });
+exports.get = async (req, res, next) => {
+  try {
+    const club = await ClubModel.findById(req.params.id);
+    if (!club) return res.status(404).json({ error: 'Club not found' });
+    res.json({ club });
+  } catch (err) { next(err); }
 };
-exports.create = (req, res) => {
-  const club = { id: uuidv4(), ...req.body, createdBy: req.user.id, createdAt: new Date() };
-  clubs.push(club);
-  res.status(201).json({ club });
+
+exports.create = async (req, res, next) => {
+  try {
+    const club = await ClubModel.create({ ...req.body, ownerId: req.user.id });
+    res.status(201).json({ club });
+  } catch (err) { next(err); }
 };
-exports.update = (req, res) => {
-  const idx = clubs.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Club not found' });
-  clubs[idx] = { ...clubs[idx], ...req.body, updatedAt: new Date() };
-  res.json({ club: clubs[idx] });
+
+exports.update = async (req, res, next) => {
+  try {
+    const club = await ClubModel.update(req.params.id, req.body);
+    if (!club) return res.status(404).json({ error: 'Club not found' });
+    res.json({ club });
+  } catch (err) { next(err); }
 };
-exports.remove = (req, res) => {
-  const idx = clubs.findIndex(c => c.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Club not found' });
-  clubs.splice(idx, 1);
-  res.json({ message: 'Club deleted' });
+
+exports.remove = async (req, res, next) => {
+  try {
+    await ClubModel.delete(req.params.id);
+    res.json({ message: 'Club deleted' });
+  } catch (err) { next(err); }
 };

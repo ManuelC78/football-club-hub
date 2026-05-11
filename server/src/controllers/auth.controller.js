@@ -1,9 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-
-// In a real app these would hit the DB — stubbed for scaffold
-const users = [];
+const UserModel = require('../models/user.model');
 
 const generateTokens = (user) => {
   const access = jwt.sign(
@@ -22,26 +19,25 @@ const generateTokens = (user) => {
 exports.register = async (req, res, next) => {
   try {
     const { email, password, name } = req.body;
-    if (users.find(u => u.email === email)) {
-      return res.status(409).json({ error: 'Email already registered' });
-    }
-    const hashed = await bcrypt.hash(password, 12);
-    const user = { id: uuidv4(), email, password: hashed, name, role: 'manager' };
-    users.push(user);
+    const existing = await UserModel.findByEmail(email);
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await UserModel.create({ email, passwordHash, name });
     const tokens = generateTokens(user);
-    res.status(201).json({ user: { id: user.id, email, name, role: user.role }, ...tokens });
+    res.status(201).json({ user, ...tokens });
   } catch (err) { next(err); }
 };
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const user = users.find(u => u.email === email);
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-    const tokens = generateTokens(user);
-    res.json({ user: { id: user.id, email, name: user.name, role: user.role }, ...tokens });
+    const user = await UserModel.findByEmail(email);
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    const { password_hash, ...safeUser } = user;
+    const tokens = generateTokens(safeUser);
+    res.json({ user: safeUser, ...tokens });
   } catch (err) { next(err); }
 };
 
@@ -50,14 +46,23 @@ exports.refresh = (req, res, next) => {
     const { refreshToken } = req.body;
     if (!refreshToken) return res.status(401).json({ error: 'Refresh token required' });
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
-    const user = users.find(u => u.id === decoded.id);
-    if (!user) return res.status(401).json({ error: 'Invalid token' });
-    const tokens = generateTokens(user);
+    // In production: validate refresh token against DB/Redis store
+    const tokens = generateTokens({ id: decoded.id, email: decoded.email, role: decoded.role });
     res.json(tokens);
-  } catch (err) { next(err); }
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
 };
 
 exports.logout = (req, res) => {
   // In production: invalidate refresh token in DB/Redis
   res.json({ message: 'Logged out successfully' });
+};
+
+exports.me = async (req, res, next) => {
+  try {
+    const user = await UserModel.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user });
+  } catch (err) { next(err); }
 };

@@ -1,44 +1,49 @@
-const { v4: uuidv4 } = require('uuid');
+const SessionModel = require('../models/session.model');
 
-const sessions = [];
+exports.list = async (req, res, next) => {
+  try {
+    const { clubId } = req.query;
+    if (!clubId) return res.status(400).json({ error: 'clubId query param required' });
+    const sessions = await SessionModel.findByClub(clubId);
+    res.json({ sessions });
+  } catch (err) { next(err); }
+};
 
-exports.list   = (req, res) => {
-  const { clubId } = req.query;
-  const result = clubId ? sessions.filter(s => s.clubId === clubId) : sessions;
-  res.json({ sessions: result });
+exports.get = async (req, res, next) => {
+  try {
+    const session = await SessionModel.findById(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    res.json({ session });
+  } catch (err) { next(err); }
 };
-exports.get    = (req, res) => {
-  const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Session not found' });
-  res.json({ session });
+
+exports.create = async (req, res, next) => {
+  try {
+    const session = await SessionModel.create({ ...req.body, coachId: req.user.id });
+    res.status(201).json({ session });
+  } catch (err) { next(err); }
 };
-exports.create = (req, res) => {
-  const session = {
-    id: uuidv4(),
-    ...req.body,
-    attendance: [],
-    coachId: req.user.id,
-    createdAt: new Date(),
-  };
-  sessions.push(session);
-  res.status(201).json({ session });
+
+exports.update = async (req, res, next) => {
+  try {
+    const session = await SessionModel.update(req.params.id, req.body);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    res.json({ session });
+  } catch (err) { next(err); }
 };
-exports.update = (req, res) => {
-  const idx = sessions.findIndex(s => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Session not found' });
-  sessions[idx] = { ...sessions[idx], ...req.body, updatedAt: new Date() };
-  res.json({ session: sessions[idx] });
+
+exports.remove = async (req, res, next) => {
+  try {
+    await SessionModel.delete(req.params.id);
+    res.json({ message: 'Session deleted' });
+  } catch (err) { next(err); }
 };
-exports.remove = (req, res) => {
-  const idx = sessions.findIndex(s => s.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Session not found' });
-  sessions.splice(idx, 1);
-  res.json({ message: 'Session deleted' });
-};
-exports.recordAttendance = (req, res) => {
-  const session = sessions.find(s => s.id === req.params.id);
-  if (!session) return res.status(404).json({ error: 'Session not found' });
-  session.attendance = req.body.attendance; // [{ playerId, present }]
-  session.updatedAt = new Date();
-  res.json({ session });
+
+exports.recordAttendance = async (req, res, next) => {
+  try {
+    const { attendance } = req.body;
+    await SessionModel.upsertAttendance(req.params.id, attendance);
+    const session = await SessionModel.findById(req.params.id);
+    res.json({ session });
+  } catch (err) { next(err); }
 };
