@@ -1,0 +1,26 @@
+{
+  "synced_at": "2026-05-11T10:29:22Z",
+  "app_id": "69b05104191253050ccd1311",
+  "app_name": "Football Club Hub",
+  "entity_counts": {
+    "Club": 1,
+    "Team": 0,
+    "Player": 0,
+    "TrainingSession": 0,
+    "Drill": 0,
+    "DrillLibrary": 0,
+    "Match": 0,
+    "PlayerRating": 0,
+    "MatchReview": 0,
+    "Message": 0,
+    "TacticalPlan": 0,
+    "StaffMember": 0,
+    "Availability": 0,
+    "SessionAttendance": 0,
+    "MatchSetup": 0,
+    "ScoutReport": 0,
+    "Scout": 0,
+    "CoachInvitation": 0
+  },
+  "total_records": 1
+}
