@@ -1,33 +1,40 @@
-const { v4: uuidv4 } = require('uuid');
+const PlayerModel = require('../models/player.model');
 
-const players = [];
+exports.list = async (req, res, next) => {
+  try {
+    const { clubId } = req.query;
+    if (!clubId) return res.status(400).json({ error: 'clubId query param required' });
+    const players = await PlayerModel.findByClub(clubId);
+    res.json({ players });
+  } catch (err) { next(err); }
+};
 
-exports.list   = (req, res) => {
-  const { clubId, teamId } = req.query;
-  let result = players;
-  if (clubId)  result = result.filter(p => p.clubId === clubId);
-  if (teamId)  result = result.filter(p => p.teamId === teamId);
-  res.json({ players: result });
+exports.get = async (req, res, next) => {
+  try {
+    const player = await PlayerModel.findById(req.params.id);
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+    res.json({ player });
+  } catch (err) { next(err); }
 };
-exports.get    = (req, res) => {
-  const player = players.find(p => p.id === req.params.id);
-  if (!player) return res.status(404).json({ error: 'Player not found' });
-  res.json({ player });
+
+exports.create = async (req, res, next) => {
+  try {
+    const player = await PlayerModel.create(req.body);
+    res.status(201).json({ player });
+  } catch (err) { next(err); }
 };
-exports.create = (req, res) => {
-  const player = { id: uuidv4(), ...req.body, createdAt: new Date() };
-  players.push(player);
-  res.status(201).json({ player });
+
+exports.update = async (req, res, next) => {
+  try {
+    const player = await PlayerModel.update(req.params.id, req.body);
+    if (!player) return res.status(404).json({ error: 'Player not found' });
+    res.json({ player });
+  } catch (err) { next(err); }
 };
-exports.update = (req, res) => {
-  const idx = players.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Player not found' });
-  players[idx] = { ...players[idx], ...req.body, updatedAt: new Date() };
-  res.json({ player: players[idx] });
-};
-exports.remove = (req, res) => {
-  const idx = players.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Player not found' });
-  players.splice(idx, 1);
-  res.json({ message: 'Player deleted' });
+
+exports.remove = async (req, res, next) => {
+  try {
+    await PlayerModel.delete(req.params.id);
+    res.json({ message: 'Player removed from squad' });
+  } catch (err) { next(err); }
 };
