@@ -3,46 +3,120 @@ import { useRouter } from 'next/router';
 import useAuthStore from '../../store/auth.store';
 import { getSubscription, createCheckout, createPortal } from '../../api/billing';
 
+/**
+ * Pricing tiers — revised May 2026
+ * Aligned with live footballclubhub.app pricing + GTM strategy
+ *
+ * Key changes from previous version:
+ * - Removed old £9/£19/£49 tiers (too low for club-level market)
+ * - Added Club Starter (£19/mo) as a mid-tier for small grassroots clubs
+ * - Club Pro (£49/mo) replaces the old "Club" at £89 for growing clubs
+ * - Academy (£89/mo) replaces "Contact Us" with a real price anchor
+ * - Free plan updated to match live app (1 team, 2 AI sessions/week)
+ */
 const PLANS = [
   {
-    id: 'free',
-    name: 'Free',
+    id: 'coach',
+    name: 'Coach',
     price: '£0',
     period: 'forever',
     color: '#6c757d',
-    features: ['1 club', 'Up to 20 players', 'Basic fixtures', 'Email support'],
-    cta: 'Current Plan',
+    badge: null,
+    description: 'Perfect for individual coaches getting started.',
+    features: [
+      '1 Team',
+      'Up to 3 coaches included',
+      'Player Management',
+      'Training Planner',
+      'Exercise Library',
+      'Analytics',
+      '2 AI Session Generations/week',
+      'Tactics Board',
+      'Match Analysis & Reviews',
+    ],
+    addons: [
+      'Extra coaches: £3.99/mo per coach',
+      'Extra AI Session: £1.99/each',
+    ],
+    cta: 'Get Started Free',
+    stripe_price_id: null,
   },
   {
-    id: 'starter',
-    name: 'Starter',
-    price: '£9',
-    period: '/month',
-    color: '#003388',
-    features: ['1 club', 'Unlimited players', 'Training planner', 'Attendance tracking', 'File uploads'],
-    cta: 'Start 14-day trial',
-    popular: false,
-  },
-  {
-    id: 'pro',
-    name: 'Pro',
+    id: 'club_starter',
+    name: 'Club Starter',
     price: '£19',
     period: '/month',
-    color: '#27ae60',
-    features: ['3 clubs', 'Unlimited players', 'Everything in Starter', 'Parent portal', 'Analytics dashboard', 'Priority support'],
-    cta: 'Start 14-day trial',
-    popular: true,
+    color: '#2980b9',
+    badge: null,
+    description: 'For small grassroots clubs managing up to 5 teams.',
+    features: [
+      'Everything in Coach',
+      'Up to 5 Teams',
+      'Unlimited Players',
+      '20 AI Session Generations/month',
+      'Staff Management',
+      'Team Messaging',
+      'Player Performance Reports (PDF)',
+    ],
+    addons: [
+      'Extra team: £5.99/mo',
+    ],
+    cta: 'Start 30-day Free Trial',
+    stripe_price_id: process.env.NEXT_PUBLIC_STRIPE_CLUB_STARTER_PRICE_ID,
+    trial_days: 30,
   },
   {
-    id: 'elite',
-    name: 'Elite',
+    id: 'club_pro',
+    name: 'Club Pro',
     price: '£49',
     period: '/month',
+    color: '#27ae60',
+    badge: 'Most Popular',
+    description: 'Everything a growing club needs in one platform.',
+    features: [
+      'Everything in Club Starter',
+      'Up to 20 Teams',
+      'Unlimited AI Session Generation',
+      'Match Center — Lineups, Formations & Captains',
+      'Player Performance Reports (PDF & Email)',
+      'Advanced Analytics Dashboard',
+      'Priority Support',
+    ],
+    addons: [
+      'Extra team: £5.99/mo',
+    ],
+    cta: 'Start 30-day Free Trial',
+    stripe_price_id: process.env.NEXT_PUBLIC_STRIPE_CLUB_PRO_PRICE_ID,
+    trial_days: 30,
+  },
+  {
+    id: 'academy',
+    name: 'Academy',
+    price: '£89',
+    period: '/month',
     color: '#8e44ad',
-    features: ['Unlimited clubs', 'Everything in Pro', 'Custom branding', 'API access', 'Dedicated onboarding', 'SLA support'],
-    cta: 'Start 14-day trial',
+    badge: null,
+    description: 'For professional academies and large organisations.',
+    features: [
+      'Everything in Club Pro',
+      'Unlimited Teams',
+      'Multi-Staff Access & Roles',
+      'Custom Branding',
+      'Scouting Platform',
+      'Match Analysis Platform',
+      'Dedicated Onboarding',
+      'SLA Guarantee',
+      'Custom Integrations',
+    ],
+    addons: [],
+    cta: 'Start 30-day Free Trial',
+    stripe_price_id: process.env.NEXT_PUBLIC_STRIPE_ACADEMY_PRICE_ID,
+    trial_days: 30,
+    contact_cta: true, // show "Contact Us" as secondary option for enterprise
   },
 ];
+
+export { PLANS };
 
 export default function Billing() {
   const { user, isAuthenticated } = useAuthStore();
@@ -52,6 +126,7 @@ export default function Billing() {
   const [sub, setSub]         = useState(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg]         = useState('');
+  const [billing, setBilling] = useState('monthly'); // 'monthly' | 'annual'
 
   useEffect(() => {
     if (!isAuthenticated) { router.push('/login'); return; }
@@ -68,12 +143,13 @@ export default function Billing() {
   };
 
   const handleUpgrade = async (plan) => {
-    if (plan === 'free') return;
+    if (plan === 'coach') return;
     setLoading(true);
     try {
       const res = await createCheckout({
         clubId,
         plan,
+        billingCycle: billing,
         successUrl: `${window.location.origin}/dashboard/billing?clubId=${clubId}&success=1`,
         cancelUrl:  `${window.location.origin}/dashboard/billing?clubId=${clubId}&canceled=1`,
       });
@@ -95,7 +171,17 @@ export default function Billing() {
     }
   };
 
-  const currentPlan = sub?.plan || 'free';
+  const getDisplayPrice = (plan) => {
+    if (plan.id === 'coach') return plan.price;
+    const monthly = parseInt(plan.price.replace('£',''));
+    if (billing === 'annual') {
+      const annual = Math.round(monthly * 10); // 2 months free
+      return `£${annual}`;
+    }
+    return plan.price;
+  };
+
+  const currentPlan = sub?.plan || 'coach';
 
   return (
     <div style={{ fontFamily:'sans-serif', minHeight:'100vh', background:'#f0f4fb' }}>
@@ -107,13 +193,23 @@ export default function Billing() {
         </button>
       </nav>
 
-      <div style={{ maxWidth:'900px', margin:'0 auto', padding:'40px 20px' }}>
-        <h1 style={{ color:'#1a2a4a', marginBottom:'8px' }}>💳 Billing & Plans</h1>
-        <p style={{ color:'#666', marginBottom:'24px' }}>
-          Current plan: <strong style={{ color:'#003388', textTransform:'capitalize' }}>{currentPlan}</strong>
-          {sub?.current_period_end && ` · Renews ${new Date(sub.current_period_end).toLocaleDateString('en-GB')}`}
-          {sub?.cancel_at_period_end && ' · Cancels at period end'}
+      <div style={{ maxWidth:'1100px', margin:'0 auto', padding:'40px 20px' }}>
+        <h1 style={{ color:'#1a2a4a', marginBottom:'8px', textAlign:'center' }}>Simple, transparent pricing</h1>
+        <p style={{ color:'#666', marginBottom:'12px', textAlign:'center' }}>
+          Start free and upgrade as your club grows. No hidden fees, cancel anytime.
         </p>
+
+        {/* Billing toggle */}
+        <div style={{ display:'flex', justifyContent:'center', gap:'0', marginBottom:'32px', background:'#e8edf5', borderRadius:'8px', width:'fit-content', margin:'0 auto 32px' }}>
+          {['monthly','annual'].map(b => (
+            <button key={b} onClick={() => setBilling(b)}
+              style={{ padding:'8px 22px', border:'none', borderRadius:'8px', cursor:'pointer', fontWeight:600, fontSize:'0.9em',
+                background: billing === b ? '#003388' : 'transparent',
+                color: billing === b ? 'white' : '#555' }}>
+              {b === 'monthly' ? 'Monthly' : 'Annual (2 months free)'}
+            </button>
+          ))}
+        </div>
 
         {msg && (
           <div style={{ background: success ? '#eafaf1' : '#fff3cd', border:`1px solid ${success?'#27ae60':'#ffc107'}`,
@@ -122,8 +218,7 @@ export default function Billing() {
           </div>
         )}
 
-        {/* Manage existing subscription */}
-        {currentPlan !== 'free' && (
+        {currentPlan !== 'coach' && (
           <div style={{ background:'white', borderRadius:'12px', padding:'20px 24px', marginBottom:'28px',
             display:'flex', justifyContent:'space-between', alignItems:'center', boxShadow:'0 1px 4px rgba(0,0,50,0.07)' }}>
             <div>
@@ -131,57 +226,90 @@ export default function Billing() {
               <div style={{ color:'#888', fontSize:'0.88em' }}>Update payment method, download invoices, or cancel.</div>
             </div>
             <button onClick={handlePortal} disabled={loading}
-              style={{ background:'#003388', color:'white', border:'none', padding:'10px 20px', borderRadius:'8px', fontWeight:600, cursor:'pointer' }}>
-              Open Billing Portal →
+              style={{ background:'#003388', color:'white', border:'none', padding:'10px 22px', borderRadius:'8px', cursor:'pointer', fontWeight:600 }}>
+              Billing Portal →
             </button>
           </div>
         )}
 
-        {/* Pricing cards */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:'16px' }}>
+        {/* Plan cards */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:'18px' }}>
           {PLANS.map(plan => {
-            const isCurrent = plan.id === currentPlan;
+            const isCurrent = currentPlan === plan.id;
             return (
-              <div key={plan.id} style={{ background:'white', borderRadius:'14px', padding:'24px',
-                border: plan.popular ? `2px solid ${plan.color}` : isCurrent ? `2px solid #27ae60` : '2px solid #eee',
-                position:'relative', boxShadow:'0 1px 4px rgba(0,0,50,0.07)' }}>
-                {plan.popular && (
+              <div key={plan.id} style={{
+                background:'white', borderRadius:'14px', padding:'26px 22px',
+                border: plan.badge ? '2px solid #27ae60' : isCurrent ? '2px solid #003388' : '2px solid #eee',
+                boxShadow: plan.badge ? '0 4px 20px rgba(39,174,96,0.15)' : '0 2px 8px rgba(0,0,50,0.07)',
+                position:'relative',
+              }}>
+                {plan.badge && (
                   <div style={{ position:'absolute', top:'-12px', left:'50%', transform:'translateX(-50%)',
-                    background:plan.color, color:'white', fontSize:'0.75em', fontWeight:700,
-                    padding:'3px 12px', borderRadius:'20px', whiteSpace:'nowrap' }}>
-                    MOST POPULAR
+                    background:'#27ae60', color:'white', padding:'4px 14px', borderRadius:'12px', fontSize:'0.75em', fontWeight:700 }}>
+                    ⭐ {plan.badge}
                   </div>
                 )}
-                {isCurrent && (
-                  <div style={{ position:'absolute', top:'-12px', right:'16px',
-                    background:'#27ae60', color:'white', fontSize:'0.75em', fontWeight:700,
-                    padding:'3px 12px', borderRadius:'20px' }}>
-                    CURRENT
+                {isCurrent && !plan.badge && (
+                  <div style={{ position:'absolute', top:'-12px', left:'50%', transform:'translateX(-50%)',
+                    background:'#003388', color:'white', padding:'4px 14px', borderRadius:'12px', fontSize:'0.75em', fontWeight:700 }}>
+                    Current Plan
                   </div>
                 )}
-                <div style={{ fontWeight:800, color:plan.color, fontSize:'1.1em', marginBottom:'4px' }}>{plan.name}</div>
-                <div style={{ fontSize:'2em', fontWeight:800, color:'#1a2a4a' }}>
-                  {plan.price}<span style={{ fontSize:'0.45em', color:'#888', fontWeight:400 }}>{plan.period}</span>
+
+                <div style={{ fontWeight:800, fontSize:'1.1em', color: plan.color, marginBottom:'4px' }}>{plan.name}</div>
+                <div style={{ fontSize:'0.82em', color:'#888', marginBottom:'14px' }}>{plan.description}</div>
+
+                <div style={{ marginBottom:'16px' }}>
+                  <span style={{ fontSize:'2.2em', fontWeight:800, color:'#1a2a4a' }}>{getDisplayPrice(plan)}</span>
+                  <span style={{ fontSize:'0.82em', color:'#888' }}>{billing === 'annual' && plan.id !== 'coach' ? '/year' : plan.period}</span>
+                  {billing === 'annual' && plan.id !== 'coach' && (
+                    <div style={{ fontSize:'0.75em', color:'#27ae60', fontWeight:600, marginTop:'2px' }}>2 months free 🎉</div>
+                  )}
                 </div>
-                <ul style={{ listStyle:'none', padding:0, margin:'16px 0', fontSize:'0.85em', color:'#555', lineHeight:'1.9' }}>
-                  {plan.features.map(f => <li key={f}>✓ {f}</li>)}
+
+                <ul style={{ listStyle:'none', padding:0, margin:'0 0 18px', fontSize:'0.83em', color:'#444' }}>
+                  {plan.features.map(f => (
+                    <li key={f} style={{ padding:'4px 0', display:'flex', gap:'8px', alignItems:'flex-start' }}>
+                      <span style={{ color:'#27ae60', fontWeight:700, flexShrink:0 }}>✓</span>{f}
+                    </li>
+                  ))}
                 </ul>
+
+                {plan.addons.length > 0 && (
+                  <div style={{ borderTop:'1px solid #f0f4fb', paddingTop:'12px', marginBottom:'16px' }}>
+                    <div style={{ fontSize:'0.72em', fontWeight:700, color:'#aaa', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:'6px' }}>Add-ons</div>
+                    {plan.addons.map(a => (
+                      <div key={a} style={{ fontSize:'0.78em', color:'#666', padding:'2px 0' }}>+ {a}</div>
+                    ))}
+                  </div>
+                )}
+
                 <button
-                  disabled={isCurrent || loading}
-                  onClick={() => handleUpgrade(plan.id)}
-                  style={{ width:'100%', background: isCurrent?'#eee':plan.color, color: isCurrent?'#888':'white',
-                    border:'none', padding:'10px', borderRadius:'8px', fontWeight:600,
-                    cursor: isCurrent?'default':'pointer', fontSize:'0.9em' }}>
-                  {isCurrent ? '✓ Active' : plan.cta}
+                  onClick={() => isCurrent ? null : handleUpgrade(plan.id)}
+                  disabled={loading || isCurrent}
+                  style={{
+                    width:'100%', padding:'11px', borderRadius:'8px', border:'none', cursor: isCurrent ? 'default' : 'pointer',
+                    fontWeight:700, fontSize:'0.9em',
+                    background: isCurrent ? '#f0f4fb' : plan.badge ? '#27ae60' : plan.id === 'coach' ? '#f0f4fb' : '#003388',
+                    color: isCurrent ? '#aaa' : plan.id === 'coach' ? '#555' : 'white',
+                  }}>
+                  {isCurrent ? '✓ Current Plan' : loading ? 'Loading...' : plan.cta}
                 </button>
+
+                {plan.contact_cta && !isCurrent && (
+                  <a href="mailto:hello@footballclubhub.app?subject=Academy Plan Enquiry"
+                    style={{ display:'block', textAlign:'center', marginTop:'8px', fontSize:'0.8em', color:'#8e44ad' }}>
+                    Need more? Contact us →
+                  </a>
+                )}
               </div>
             );
           })}
         </div>
 
-        <p style={{ textAlign:'center', color:'#aaa', fontSize:'0.8em', marginTop:'24px' }}>
-          All plans include a 14-day free trial. Cancel anytime. Prices ex. VAT.
-        </p>
+        <div style={{ textAlign:'center', marginTop:'28px', color:'#aaa', fontSize:'0.82em' }}>
+          🔒 Secure payments via Stripe · 30-day free trial on all paid plans · Cancel anytime
+        </div>
       </div>
     </div>
   );
